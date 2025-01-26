@@ -8,12 +8,15 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 
-from src.net import GNNStack 
 from utlis import AverageMeter, accuracy, log_msg, get_default_train_val_test_loader1, evaluate
+import sys 
+sys.path.append('/home/yiya/code_Project_yiya/osa_DGAT/')
+from lab.src.net import GNNStack, DGATStack_v1
+
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='PyTorch UEA Training')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='tf_GAT_p1')#dyGIN2d
+parser.add_argument('-a', '--arch', metavar='ARCH', default='DGAT_0126')#dyGIN2d
 parser.add_argument('-d', '--dataset', metavar='DATASET', default='mesag')#PPGflow3_2_5
 parser.add_argument('--num_layers', type=int, default=3, help='the number of GNN layers')
 parser.add_argument('--groups', type=int, default=6, help='the number of time series groups (num_graphs)')
@@ -52,12 +55,12 @@ parser.add_argument('--tag', default='date', type=str,
                     help='the tag for identifying the log and model files. Just a string.')
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1,2'
-device_ids = [1,2]
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+device_ids = [1]
 args = parser.parse_args()
 device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-save_dir = '/home/yiya/code_Project_yiya/osa_GNN/result/'
+save_dir = '/home/yiya/code_Project_yiya/osa_DGAT/lab/result/'
 def main():
     # args = parser.parse_args()
     
@@ -79,7 +82,7 @@ def main_work(args):
         local_date = time.strftime('%m.%d', time.localtime(time.time()))
         args.tag = local_date
 
-    log_file = '/home/yiya/code_Project_yiya/osa_GNN/log/{}_gpu{}_{}_{}_exp.txt'.format(args.tag, args.gpu, args.arch, args.dataset)
+    log_file = '/home/yiya/code_Project_yiya/osa_DGAT/lab/log/{}_gpu{}_{}_{}_exp.txt'.format(args.tag, args.gpu, args.arch, args.dataset)
 
     # if args.gpu is not None:
     #     print("Use GPU: {} for training".format(args.gpu))   
@@ -90,7 +93,7 @@ def main_work(args):
     train_loader, val_loader, num_nodes, seq_length, num_classes = get_default_train_val_test_loader1(args)
     
     # training model from net.py
-    model = GNNStack(gnn_model_type=args.arch, num_layers=args.num_layers, dropout=args.dropout,
+    model = DGATStack_v1(gnn_model_type=args.arch, num_layers=args.num_layers, dropout=args.dropout,
                      groups=args.groups, pool_ratio=args.pool_ratio, kern_size=args.kern_size, 
                      in_dim=args.in_dim, hidden_dim=args.hidden_dim, out_dim=args.out_dim, 
                      seq_len=seq_length, num_nodes=num_nodes, num_classes=num_classes, batch_size=args.batch_size)
