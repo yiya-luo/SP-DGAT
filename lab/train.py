@@ -16,10 +16,10 @@ from lab.src.net import GNNStack, DGATStack_v1
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='PyTorch UEA Training')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='DGAT_0126')#dyGIN2d
+parser.add_argument('-a', '--arch', metavar='ARCH', default='DGAT_0208')#dyGIN2d
 parser.add_argument('-d', '--dataset', metavar='DATASET', default='mesag')#PPGflow3_2_5
 parser.add_argument('--num_layers', type=int, default=3, help='the number of GNN layers')
-parser.add_argument('--groups', type=int, default=6, help='the number of time series groups (num_graphs)')
+parser.add_argument('--groups', type=int, default=2, help='the number of time series groups (num_graphs)')
 parser.add_argument('--pool_ratio', type=float, default=0.2, help='the ratio of pooling for nodes')
 parser.add_argument('--dropout', type=float, default=0.5, help='dropour')
 parser.add_argument('--kern_size', type=str, default="9,5,3", help='list of time conv kernel size for each layer')
@@ -37,7 +37,7 @@ parser.add_argument('-b', '--batch-size', default=64, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--val-batch-size', default=128, type=int, metavar='V',
                     help='validation batch size')
-parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float,
+parser.add_argument('--lr', '--learning-rate', default=1e-5, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--wd', '--weight-decay', default=1e-3
                     , type=float,
@@ -55,8 +55,8 @@ parser.add_argument('--tag', default='date', type=str,
                     help='the tag for identifying the log and model files. Just a string.')
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-device_ids = [1]
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+# device_ids = [1]
 args = parser.parse_args()
 device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -65,7 +65,7 @@ def main():
     # args = parser.parse_args()
     
     args.kern_size = [ int(l) for l in args.kern_size.split(",") ]
-    os.makedirs(f'{save_dir}/adj/{args.arch}/') if not os.path.exists(f'{save_dir}/adj/{args.arch}/') else print('1')
+    os.makedirs(f'{save_dir}/{args.arch}/') if not os.path.exists(f'{save_dir}/{args.arch}/') else print('1')
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -200,7 +200,7 @@ def main_work(args):
 
         # remember best acc
         if best_acc1!= max(acc_val_per, best_acc1):
-            torch.save(model.state_dict(), f'{save_dir}/best_model_{args.arch}.pth')
+            torch.save(model.state_dict(), f'{save_dir}/{args.arch}/best_model_{args.arch}.pth')
         best_acc1, best_recall, best_precision, best_f1 = max(acc_val_per, best_acc1),max(eval_val_para[1], best_recall),max(eval_val_para[2], best_precision), max(f1score, best_f1)
 
 
@@ -209,8 +209,8 @@ def main_work(args):
             plt.clf()
             plt.imshow(adj.cpu().detach().numpy()[:64,:], cmap='Blues')
             plt.colorbar()            
-            plt.savefig(f'{save_dir}/adj/{args.arch}/adj_{epoch}.png')
-            torch.save(adj, f'{save_dir}/adj/{args.arch}/adj_matrix_{epoch}.pth')
+            plt.savefig(f'{save_dir}/{args.arch}/adj_{epoch}.png')
+            torch.save(adj, f'{save_dir}/{args.arch}/adj_matrix_{epoch}.pth')
     
     # 绘制训练损失和验证损失的折线图
     plt.clf()
@@ -223,7 +223,7 @@ def main_work(args):
 
     # 添加图例
     plt.legend()
-    plt.savefig(f'{save_dir}/loss/loss_{args.tag}_{args.arch}.png')        
+    plt.savefig(f'{save_dir}/{args.arch}/loss_{args.tag}_{args.arch}.png')        
 
 
     # measure elapsed time

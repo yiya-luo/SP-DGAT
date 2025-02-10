@@ -153,31 +153,27 @@ class DGATStack_v1(nn.Module):
         self.num_graphs = groups      
         self.num_nodes = num_nodes*self.num_graphs  
         num_nodes = self.num_nodes
-        self.n_feat = seq_len//self.num_graphs
-        # self.g_constr = adj_embedding(num_nodes, num_nodes)
-        self.g_constr = graph_constructor(self.num_nodes, self.num_nodes//2,  self.num_nodes)
-        self.idx = torch.arange(self.num_nodes)
+        self.n_feat = seq_len//self.num_graphs       
+        self.idx = torch.arange(in_dim)
+
+        self.cn = nn.Conv1d(in_channels=num_nodes, out_channels=in_dim, kernel_size=1)
         
+         # self.g_constr = adj_embedding(num_nodes, num_nodes)
+        # self.g_constr = graph_constructor(self.num_nodes, self.num_nodes//2,  self.num_nodes)
+        self.g_constr = graph_constructor(in_dim, in_dim//2,  in_dim*2)
         self.gat = GAT(self.n_feat, hidden_dim,out_dim, dropout,alpha=0.5,nheads=3)
+        num_nodes = in_dim
         
         assert num_layers >= 1, 'Error: Number of layers is invalid.'
         assert num_layers == len(kern_size), 'Error: Number of kernel_size should equal to number of layers.'
 
-        paddings = [ (k - 1) // 2 for k in kern_size ]     
-        self.left_num_nodes = []
-        for layer in range(num_layers + 1):
-            left_node = round( num_nodes * (1 - (pool_ratio*layer)) )
-            if left_node > 0:
-                self.left_num_nodes.append(left_node)
-            else:
-                self.left_num_nodes.append(1)
         pool_kernel = 3
         self.pool = Dense_TimeDiffPool1d(num_nodes, num_nodes, kernel_size=pool_kernel, padding=(pool_kernel-1)//2)
         
-        self.num_layers = num_layers
-        self.dropout = dropout
-        self.activation = activation
-        self.bn = nn.BatchNorm1d(in_dim)
+        # self.num_layers = num_layers
+        # self.dropout = dropout
+        # self.activation = activation
+        # self.bn = nn.BatchNorm1d(in_dim)
         
         self.softmax = nn.Softmax(dim=-1)
         # self.global_pool = nn.AdaptiveAvgPool1d(1)        
@@ -185,11 +181,6 @@ class DGATStack_v1(nn.Module):
         self.linear = nn.Linear(out_dim, num_classes, bias=True)
         
         # self.reset_parameters()
-        
-        
-    def init_adj(self):
-        lower_triangle = np.tril(np.ones((self.num_nodes, self.num_nodes)))
-        return torch.tensor(lower_triangle, dtype=torch.float32)
         
         
     def build_gnn_model(self, model_type):
@@ -221,8 +212,9 @@ class DGATStack_v1(nn.Module):
             
         # adj = self.g_constr(x.device)
         adj = self.g_constr(self.idx.to(x.device),x.device)
+        x = self.cn(x)
         x, adj1 = self.pool(self.gat(x,adj), adj)
-        # x = self.cn(x)
+        
         
         out = self.global_pool(x.transpose(2,1))
         #out = self.global_pool(x)

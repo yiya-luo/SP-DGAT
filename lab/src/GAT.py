@@ -46,9 +46,13 @@ class GraphAttentionLayer(nn.Module):
         h = torch.matmul(x, self.W)  # B ,N ,O
         # 生成N*N的嵌入,repeat两次，两种方式，这个地方应该是为了把不同的sample拼接。为下一步求不同样本交互做准备。
         # a_input = torch.cat([h.repeat(1,1, N).view(B, N * N, -1), h.repeat(1, N, 1)], dim=1).view(B, N, -1, 2 * self.out_features)
-        a_input = torch.cat([h.unsqueeze(2).expand(-1, -1, N, -1), h.unsqueeze(1).expand(-1, N, -1, -1)], dim=-1)
-        # [N, N, 2*out_features]
-        e = self.leakyrelu(torch.matmul(a_input, self.a).squeeze(3))
+        # a_input = torch.cat([h.unsqueeze(2).expand(-1, -1, N, -1), h.unsqueeze(1).expand(-1, N, -1, -1)], dim=-1)  # [N, N, 2*out_features]       
+        # e = self.leakyrelu(torch.matmul(a_input, self.a).squeeze(3))
+
+        Wh1 = torch.matmul(h, self.a[:self.out_features, :])
+        Wh2 = torch.matmul(h, self.a[self.out_features:, :])
+        # broadcast add
+        e = self.leakyrelu(Wh1 + Wh2.transpose(2,1))
         # [N, N, 1] => [N, N] 图注意力的相关系数（未归一化）
 
         zero_vec = -1e12 * torch.ones_like(e)  # 将没有连接的边置为负无穷
