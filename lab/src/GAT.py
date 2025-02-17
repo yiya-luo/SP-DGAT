@@ -83,9 +83,9 @@ class GAT(nn.Module):
         super(GAT, self).__init__()
         self.dropout = dropout
         self.attentions = nn.Sequential(
-            GraphAttentionLayer(nfeat, nheads*nfeat, dropout=dropout, alpha=alpha, concat=True),
-            GraphAttentionLayer(nheads*nfeat, nhid, dropout=dropout, alpha=alpha, concat=True),
-            GraphAttentionLayer(nhid, ofeat, dropout=dropout, alpha=alpha, concat=True)
+            GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True),
+            GraphAttentionLayer(nhid, nhid*nheads, dropout=dropout, alpha=alpha, concat=True),
+            GraphAttentionLayer(nhid*nheads, ofeat, dropout=dropout, alpha=alpha, concat=True)
         )
  
 

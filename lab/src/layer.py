@@ -95,6 +95,8 @@ class adj_embedding(nn.Module):
         adj=adj*adj_flat
         return adj
 
+
+# 图结构-链接矩阵生成-idx
 class graph_constructor(nn.Module):
     def __init__(self, nnodes, k, dim, alpha=3, static_feat=None):
         super(graph_constructor, self).__init__()
@@ -149,6 +151,89 @@ class graph_constructor(nn.Module):
         a = torch.mm(nodevec1, nodevec2.transpose(1,0))-torch.mm(nodevec2, nodevec1.transpose(1,0))
         adj = F.relu(torch.tanh(self.alpha*a))
         return adj
+
+
+class graph_constructor_simi(nn.Module):
+    def __init__(self, nnodes, N, length, group, batch_size, k):
+        super(graph_constructor_simi, self).__init__()
+        assert nnodes==group*N , 'Error:  nnodes!=group*N'
+        self.nnodes = nnodes
+        self.group = group
+        self.n = N
+        self.k = k
+
+        self.W = nn.Parameter(torch.randn(length, nnodes))  # [d, L]
+        self.b = nn.Parameter(torch.zeros(nnodes))            # [d]
+        
+        # 相似度计算参数
+        self.alpha = nn.Parameter(torch.tensor([0.1]))          # 缩放因子
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.W)
+        nn.init.zeros_(self.b)
+
+    def compute_node_similarity(self, x: torch.Tensor, method: str = "cosine") -> torch.Tensor:
+        """
+        计算批处理时间序列节点间的相似度矩阵
+        Args:
+            x (Tensor): 输入张量，形状为 [B, N, L]
+            method (str): 相似度计算方法，可选 "cosine" | "pearson" | "euclidean"
+        Returns:
+            Tensor: 相似度矩阵，形状为 [B, N, N]
+        """
+        assert method in ["cosine", "pearson", "euclidean"], "不支持的相似度计算方法"
+
+        if method in ["cosine", "pearson"]:
+            # 中心化处理（皮尔逊相关系数需要）
+            if method == "pearson":
+                x = x - x.mean(dim=-1, keepdim=True)
+            
+            # 归一化
+            x_norm = x / (torch.norm(x, dim=-1, keepdim=True) + 1e-8) # 防止除零
+            
+            # 计算相似度矩阵
+            similarity = torch.matmul(x_norm, x_norm.transpose(1, 2))  # [B, N, N]
+
+        elif method == "euclidean":
+            # 计算欧氏距离的平方
+            x_square = torch.sum(x**2, dim=-1, keepdim=True)  # [B, N, 1]
+            similarity = x_square + x_square.transpose(1, 2) - 2 * torch.matmul(x, x.transpose(1, 2))
+            
+            # 将距离转换为相似度（可选：exp(-distance)）
+            # similarity = torch.exp(-similarity)  # 根据需求调整
+
+        return similarity
+
+    
+    def set_topk(self, A, dim=-1):
+        values, indices = torch.topk(A, k=self.k, dim=dim)
+        mask = torch.zeros_like(A)
+        mask.scatter_(dim=dim, index=indices, src=torch.ones_like(values))
+        return A * mask
+
+
+    def forward(self, x):
+        A_intra = torch.zeros((x.shape[0], self.nnodes, self.nnodes)).to(x.device)
+        for start in range(0, self.nnodes, self.group):
+            end = start + self.group
+            A_intra[:, start:end, start:end] = self.compute_node_similarity(x[:, start:end, :])
+
+
+        # [B, N, L] -> [B, N, l] 通过线性投影
+        h = torch.einsum('bnl,lk->bnk', x, self.W) + self.b  # 应用W和b
+        h = torch.relu(h)  # 非线性激活
+        h_norm = h / (torch.norm(h, dim=-1, keepdim=True) + 1e-6)
+        sim_matrix = torch.einsum('bnd,bmd->bnm', h_norm, h_norm)  # [B, N, N]
+        A_inter = torch.sigmoid(self.alpha * sim_matrix)  # 映射到[0,1]
+
+        # A_intra = self.set_topk(A_intra)
+        A_inter = self.set_topk(A_inter)
+        
+        return A_intra, A_inter 
+
+
+
 
 class graph_global(nn.Module):
     def __init__(self, nnodes, k, dim, device, alpha=3, static_feat=None):

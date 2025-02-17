@@ -11,12 +11,12 @@ from tqdm import tqdm
 from utlis import AverageMeter, accuracy, log_msg, get_default_train_val_test_loader1, evaluate
 import sys 
 sys.path.append('/home/yiya/code_Project_yiya/osa_DGAT/')
-from lab.src.net import GNNStack, DGATStack_v1
+from lab.src.net import GNNStack, DGATStack_v2
 
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='PyTorch UEA Training')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='DGAT_0208')#dyGIN2d
+parser.add_argument('-a', '--arch', metavar='ARCH', default='DGAT_0212')#dyGIN2d
 parser.add_argument('-d', '--dataset', metavar='DATASET', default='mesag')#PPGflow3_2_5
 parser.add_argument('--num_layers', type=int, default=3, help='the number of GNN layers')
 parser.add_argument('--groups', type=int, default=2, help='the number of time series groups (num_graphs)')
@@ -55,7 +55,7 @@ parser.add_argument('--tag', default='date', type=str,
                     help='the tag for identifying the log and model files. Just a string.')
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 # device_ids = [1]
 args = parser.parse_args()
 device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
@@ -93,11 +93,11 @@ def main_work(args):
     train_loader, val_loader, num_nodes, seq_length, num_classes = get_default_train_val_test_loader1(args)
     
     # training model from net.py
-    model = DGATStack_v1(gnn_model_type=args.arch, num_layers=args.num_layers, dropout=args.dropout,
+    model = DGATStack_v2(gnn_model_type=args.arch, num_layers=args.num_layers, dropout=args.dropout,
                      groups=args.groups, pool_ratio=args.pool_ratio, kern_size=args.kern_size, 
                      in_dim=args.in_dim, hidden_dim=args.hidden_dim, out_dim=args.out_dim, 
                      seq_len=seq_length, num_nodes=num_nodes, num_classes=num_classes, batch_size=args.batch_size)
-        # print & log
+    # print & log
     log_msg('pooling_ratio {}, dropout{}, hidden_dim {}, outdim {}'.format(args.pool_ratio, args.dropout, args.hidden_dim,args.out_dim), log_file)
 
     # print & log
