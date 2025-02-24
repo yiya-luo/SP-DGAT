@@ -16,16 +16,16 @@ from lab.src.net import GNNStack, MST_DGAT
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='PyTorch UEA Training')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='DGAT_0213')#dyGIN2d
+parser.add_argument('-a', '--arch', metavar='ARCH', default='MS_DGAT_0218')#dyGIN2d
 parser.add_argument('-d', '--dataset', metavar='DATASET', default='mesag')#PPGflow3_2_5
 parser.add_argument('--num_layers', type=int, default=3, help='the number of GNN layers')
-parser.add_argument('--groups', type=int, default=2, help='the number of time series groups (num_graphs)')
+parser.add_argument('--groups', type=int, default=4, help='the number of time series groups (num_graphs)')
 parser.add_argument('--pool_ratio', type=float, default=0.2, help='the ratio of pooling for nodes')
 parser.add_argument('--dropout', type=float, default=0.2, help='dropour')
 parser.add_argument('--kern_size', type=str, default="9,5,3", help='list of time conv kernel size for each layer')
-parser.add_argument('--in_dim', type=int, default=64, help='input dimensions of GNN stacks')
-parser.add_argument('--hidden_dim', type=int, default=128, help='hidden dimensions of GNN stacks')
-parser.add_argument('--out_dim', type=int, default=256, help='output dimensions of GNN stacks')
+parser.add_argument('--in_dim', type=int, default=32, help='input dimensions of GNN stacks')
+parser.add_argument('--hidden_dim', type=int, default=64, help='hidden dimensions of GNN stacks')
+parser.add_argument('--out_dim', type=int, default=128, help='output dimensions of GNN stacks')
 parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 0)')
 parser.add_argument('--epochs', default=50, type=int, metavar='N',

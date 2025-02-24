@@ -3,7 +3,7 @@ from math import ceil
 import sys 
 sys.path.append('/home/yiya/code_Project_yiya/osa_DGAT/lab/src')
 from layer import *
-from GAT import GAT,GraphAttentionLayer
+from GAT import GAT,GraphAttentionLayer,GraphAttentionLayerV2
 
 class GNNStack(nn.Module):
     """ The stack layers of GNN.
@@ -421,56 +421,109 @@ class MST_DGAT(nn.Module):
         assert num_layers >= 1, 'Error: Number of layers is invalid.'
         assert num_layers == len(kern_size), 'Error: Number of kernel_size should equal to number of layers.'
     
+        N = N*2
         self.dropout = dropout
         self.num_graphs = groups      # 切片数
         self.num_nodes = N*self.num_graphs   # 节点数
         self.n_feat = seq_len//self.num_graphs       # 切片后的时序长度
-        self.idx = torch.arange(in_dim)
+        self.layers = num_layers
 
         # tcn
-        topk = self.num_nodes //2  # topk参数
+        num_channels = [16, 32, 64]
+        self.tcn_channels = num_channels
+        num_inputs, kernel_size = 1, 3
+        # self.tcn = nn.ModuleList([])
+        # for i in range(num_layers):
+        #     dilation_size = 2 ** i   # 膨胀系数：1，2，4，8……
+        #     out_channels = num_channels[i]  # 确定每一层的输出通道数
+        #     self.tcn.append(TemporalBlock(self.num_nodes, out_channels, kernel_size, stride=1, dilation=dilation_size,
+        #                              padding=(kernel_size-1) * dilation_size, dropout=dropout))     
+        self.tcn1 = nn.Sequential(
+           nn.Conv1d(in_channels=self.num_nodes, out_channels=num_channels[0], kernel_size=3, stride=1, padding=1),
+           nn.BatchNorm1d(num_channels[0]),
+           nn.ReLU()
+        )
+        self.tcn2 = nn.Sequential(
+           nn.Conv1d(in_channels=self.num_nodes, out_channels=num_channels[1], kernel_size=3, stride=1, padding=1),
+           nn.BatchNorm1d(num_channels[1]),
+           nn.ReLU()
+        )
+        self.tcn3 = nn.Sequential(
+           nn.Conv1d(in_channels=self.num_nodes, out_channels=num_channels[2], kernel_size=3, stride=1, padding=1),
+           nn.BatchNorm1d(num_channels[2]),
+           nn.ReLU()
+        )
+
+
+        # graph networks
+        topk = self.num_nodes //4  # topk参数
+        # topk = 6
+        nheads=1    # 多头数
+        in_dim = self.n_feat*num_channels[0]//self.num_nodes
+        in_dim2 = in_dim*nheads*num_channels[1]//self.num_nodes
+        in_dim3 = hidden_dim*num_channels[2]//self.num_nodes
 
         self.g_constr = graph_constructor_simi(self.num_nodes, N, self.n_feat, groups, batch_size, topk) # 邻接矩阵生成方法
-        nheads=1    # 多头数
+        
         alpha=0.5
         self.gat1 = nn.ModuleList(
             [
-            GraphAttentionLayer(self.n_feat, nheads*self.n_feat, dropout=dropout, alpha=alpha, concat=True),
-            GraphAttentionLayer(nheads*self.n_feat*2, hidden_dim, dropout=dropout, alpha=alpha, concat=True),
-            GraphAttentionLayer(hidden_dim*2, out_dim, dropout=dropout, alpha=alpha, concat=True)
+            GraphAttentionLayerV2(in_dim, nheads*in_dim, dropout=dropout, alpha=alpha, concat=True),
+            GraphAttentionLayerV2(in_dim2*2, hidden_dim, dropout=dropout, alpha=alpha, concat=True),
+            GraphAttentionLayerV2(in_dim3*2, out_dim, dropout=dropout, alpha=alpha, concat=True)
             ]
         )
         self.gat2 = nn.ModuleList(
             [
-            GraphAttentionLayer(self.n_feat, nheads*self.n_feat, dropout=dropout, alpha=alpha, concat=True),
-            GraphAttentionLayer(nheads*self.n_feat*2, hidden_dim, dropout=dropout, alpha=alpha, concat=True),
-            GraphAttentionLayer(hidden_dim*2, out_dim, dropout=dropout, alpha=alpha, concat=True)
+            GraphAttentionLayerV2(in_dim, nheads*in_dim, dropout=dropout, alpha=alpha, concat=True),
+            GraphAttentionLayerV2(in_dim2*2, hidden_dim, dropout=dropout, alpha=alpha, concat=True),
+            GraphAttentionLayerV2(in_dim3*2, out_dim, dropout=dropout, alpha=alpha, concat=True)
             ]
         )
+
+        pool_kernel = 3
+        self.pool = Dense_TimeDiffPool1d(self.num_nodes, self.num_nodes, kernel_size=pool_kernel, padding=(pool_kernel-1)//2)
         
     
-        
+        # classify
         self.softmax = nn.Softmax(dim=-1)
-        # self.global_pool = nn.AdaptiveAvgPool1d(1)        
-        self.global_pool = nn.AdaptiveMaxPool1d(1)        
+        self.global_pool = nn.AdaptiveAvgPool1d(1)        
+        # self.global_pool = nn.AdaptiveMaxPool1d(1)        
         self.linear = nn.Linear(self.num_nodes, num_classes, bias=True)
         
-        # self.reset_parameters()
+        
+    def frequen_maxnor(self, x):
+        # 对x执行FFT
+        x_f = torch.fft.fft(x, dim=-1)
+       
+        return  torch.cat((x,x_f.real), dim=1)
         
 
     def forward(self, x: Tensor):
+        x = self.frequen_maxnor(x)
         B, N, C = x.size()
         # 节点生成，切片后扁平化，前按groups划分元内子图
         x = x.reshape(B, N, self.num_graphs, -1)
-        x = x.reshape(B, N*self.num_graphs, -1)
+        x = x.reshape(B, N*self.num_graphs, -1)        
             
         # 生成adj，adj1为元内相似度-邻接矩阵，adj2为节点间可学习关系节点-邻接矩阵
         adj1, adj2 = self.g_constr(x)   #,x.device
+        # x =  x.unsqueeze(1)
 
-        for gnet1, gnet2 in zip(self.gat1, self.gat2):
+        for layer, gnet1, gnet2, tcn in zip(range(self.layers), self.gat1, self.gat2, [self.tcn1, self.tcn2, self.tcn3]):
+            residual = x
+            B, N, L = x.size()
+            # x = x.reshape(B, self.tcn_channels[layer], -1)
+            x = tcn(x)
+            x = x.reshape(B, self.num_nodes, -1)
+            x = F.dropout(x, self.dropout, training=self.training)
+
             x1 = gnet1(x, adj1)
             x2 = gnet2(x, adj2)
             x = torch.cat((x1, x2), dim=-1)  
+            # x = x + residual[:, :, -x.size(-1):]
+        
+        x, _ = self.pool(x, adj2)
         
         # out = self.global_pool(x.transpose(2,1))
         out = self.global_pool(x)
